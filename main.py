@@ -17,37 +17,16 @@ PORT = 8081
 CLOUDFLARED_PATH = "/root/botme/cloudflared"
 AUTH_USER = "admin"
 AUTH_PASS = "root"
+CF_PID = None
 
 def send_telegram(text):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": text[:4000]},
-            timeout=10
-        )
-    except:
-        pass
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      json={"chat_id": CHAT_ID, "text": text[:4000]}, timeout=10)
+    except: pass
 
 def log_telegram(text):
     send_telegram(f"[LOG] {text}")
-
-def kill_process(name):
-    try:
-        subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except:
-        pass
-    try:
-        subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except:
-        pass
-    try:
-        output = subprocess.check_output(["ps", "aux"], text=True)
-        for line in output.splitlines():
-            if name in line and "grep" not in line:
-                pid = line.split()[1]
-                subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except:
-        pass
 
 def find_free_port(start):
     port = start
@@ -61,21 +40,90 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WebTerm</title>
     <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        html,body{height:100%;overflow:hidden;background:#0a0a0a;color:#00ff00;font-family:'Courier New',monospace}
-        body{display:flex;flex-direction:column;padding:8px;padding-bottom:60px}
-        #header{display:flex;justify-content:space-between;padding:6px 12px;background:#111;border-bottom:1px solid #00ff00;border-radius:5px 5px 0 0;flex-shrink:0;font-size:13px}
-        #header .cwd{color:#888}
-        #output{flex:1;background:#0a0a0a;padding:8px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:14px;border:1px solid #00ff00;border-top:none;border-radius:0 0 5px 5px;margin-bottom:0;-webkit-overflow-scrolling:touch}
-        #input-line{position:fixed;bottom:0;left:0;right:0;display:flex;gap:8px;align-items:center;background:#0a0a0a;padding:8px;z-index:999;border-top:1px solid #00ff00}
-        #cmd-input{flex:1;background:#111;color:#00ff00;border:1px solid #00ff00;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:16px;outline:none;-webkit-appearance:none;appearance:none}
-        #send-btn{background:#00ff00;color:#000;border:none;border-radius:4px;padding:10px 20px;font-weight:bold;font-size:16px;cursor:pointer;touch-action:manipulation}
-        #send-btn:active{background:#00cc00}
-        .status{color:#666;font-size:11px;text-align:center;flex-shrink:0;margin-top:4px}
-        .status .online{color:#44ff44}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            overflow: hidden;
+        }
+        #header {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: #111;
+            border-bottom: 1px solid #00ff00;
+            border-radius: 5px 5px 0 0;
+            flex-shrink: 0;
+            font-size: 13px;
+        }
+        #header .cwd { color: #888; }
+        #output {
+            flex: 1;
+            background: #0a0a0a;
+            padding: 8px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 14px;
+            border: 1px solid #00ff00;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            margin-bottom: 6px;
+            -webkit-overflow-scrolling: touch;
+        }
+        #input-line {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #cmd-input {
+            flex: 1;
+            background: #111;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 10px 12px;
+            font-family: monospace;
+            font-size: 16px;
+            outline: none;
+            -webkit-appearance: none;
+            inputmode: text;
+        }
+        #send-btn {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        #send-btn:active { background: #00cc00; }
+        .status {
+            color: #666;
+            font-size: 11px;
+            margin-top: 4px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .status .online { color: #44ff44; }
+        @media (max-width: 480px) {
+            body { padding: 4px; }
+            #cmd-input { font-size: 16px; padding: 12px; }
+            #send-btn { padding: 12px 18px; font-size: 18px; }
+            #output { font-size: 13px; }
+        }
     </style>
 </head>
 <body>
@@ -85,7 +133,7 @@ HTML_TERMINAL = '''<!DOCTYPE html>
     </div>
     <div id="output">⬛ WebTerm v3.0 · Ready\nType 'help' or 'ls'\n</div>
     <div id="input-line">
-        <input id="cmd-input" type="text" placeholder="command..." autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+        <input id="cmd-input" type="text" placeholder="command..." autofocus inputmode="text">
         <button id="send-btn">⏎</button>
     </div>
     <div class="status">● <span class="online">Online</span> &nbsp;|&nbsp; <span id="timestamp"></span></div>
@@ -102,7 +150,7 @@ HTML_TERMINAL = '''<!DOCTYPE html>
             let histIdx = -1;
 
             function append(text) {
-                output.textContent += text + '\\n';
+                output.textContent += text + '\n';
                 output.scrollTop = output.scrollHeight;
             }
 
@@ -138,7 +186,7 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                 execCmd(cmd);
             }
 
-            input.addEventListener('keydown', function(e) {
+            input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleCommand();
@@ -161,20 +209,25 @@ HTML_TERMINAL = '''<!DOCTYPE html>
             });
 
             sendBtn.addEventListener('click', handleCommand);
-            
-            output.addEventListener('click', function() {
-                input.focus();
-            });
 
-            setTimeout(function() { execCmd('ls -la'); }, 600);
-            setInterval(function() {
+            // Force focus on mobile
+            function focusInput() {
+                input.focus();
+                // if mobile, try to show keyboard
+                if (navigator.userAgent.match(/Android/i) || navigator.userAgent.match(/iPhone/i)) {
+                    input.click();
+                }
+            }
+            document.addEventListener('click', focusInput);
+            setTimeout(focusInput, 300);
+
+            // Auto run ls
+            setTimeout(() => execCmd('ls -la'), 600);
+
+            setInterval(() => {
                 const now = new Date();
                 tsSpan.textContent = now.toLocaleTimeString();
             }, 1000);
-
-            window.addEventListener('resize', function() {
-                input.focus();
-            });
         })();
     </script>
 </body>
@@ -203,7 +256,7 @@ class TermHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml')
             self.end_headers()
-            self.wfile.write(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">\xe2\x96\xa0</text></svg>')
+            self.wfile.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">#</text></svg>'.encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -215,7 +268,6 @@ class TermHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"error":"Unauthorized"}')
             return
-
         if self.path == '/api/exec':
             try:
                 length = int(self.headers.get('Content-Length', 0))
@@ -226,8 +278,9 @@ class TermHandler(BaseHTTPRequestHandler):
                     raise ValueError('Empty command')
                 if os.path.exists(cwd):
                     os.chdir(cwd)
-                proc = subprocess.run(cmd, shell=True, cwd=os.getcwd(), capture_output=True, text=True, timeout=60)
-                output = proc.stdout or proc.stderr or '\u2705 Selesai'
+                proc = subprocess.run(cmd, shell=True, cwd=os.getcwd(),
+                                     capture_output=True, text=True, timeout=60)
+                output = proc.stdout or proc.stderr or '✅ Selesai'
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -248,12 +301,19 @@ class TermHandler(BaseHTTPRequestHandler):
         pass
 
 def run_tunnel(port):
-    kill_process('cloudflared')
+    global CF_PID
+    # Kill only if we have a saved PID
+    if CF_PID:
+        try:
+            os.kill(CF_PID, 9)
+        except:
+            pass
+        CF_PID = None
     cmd = [CLOUDFLARED_PATH, 'tunnel', '--url', f'http://localhost:{port}']
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    CF_PID = proc.pid
     url = None
     pattern = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
-
     def reader(pipe):
         nonlocal url
         for line in iter(pipe.readline, ''):
@@ -262,61 +322,48 @@ def run_tunnel(port):
                 if match:
                     url = match.group(0)
         pipe.close()
-
     threading.Thread(target=reader, args=(proc.stdout,), daemon=True).start()
     threading.Thread(target=reader, args=(proc.stderr,), daemon=True).start()
-
     for _ in range(30):
         if url:
             break
         time.sleep(1)
-
     return proc, url
 
 def main():
-    send_telegram('\U0001f504 Memulai Web Terminal...')
+    send_telegram('🔄 Memulai Web Terminal...')
     port = find_free_port(PORT)
-
     if not os.path.exists(CLOUDFLARED_PATH):
         log_telegram('Mengunduh cloudflared...')
         os.makedirs(os.path.dirname(CLOUDFLARED_PATH), exist_ok=True)
         subprocess.run(['curl', '-L', '-o', CLOUDFLARED_PATH,
-                        'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64'], check=True)
+                       'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64'], check=True)
         os.chmod(CLOUDFLARED_PATH, 0o755)
         log_telegram('cloudflared terunduh.')
     else:
         log_telegram('cloudflared sudah ada.')
-
     server = HTTPServer(('0.0.0.0', port), TermHandler)
-    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-    log_telegram(f'Web server berjalan di port {port}')
-
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    log_telegram(f'Web server di port {port}')
     time.sleep(2)
     cf_proc, tunnel_url = run_tunnel(port)
-
     if tunnel_url:
-        send_telegram(
-            f'\u2705 Web Terminal siap!\n'
-            f'\U0001f517 {tunnel_url}\n\n'
-            f'\U0001f510 Auth: admin / root\n'
-            f'\U0001f4e1 Endpoint: /api/exec\n'
-            f'\U0001f4a1 Command: ls, cd, npm, python, dll.'
-        )
+        send_telegram(f'✅ Web Terminal siap!\n🔗 {tunnel_url}\n\n🔐 Auth: admin/root\n📡 /api/exec')
     else:
-        send_telegram('\u274c Gagal mendapatkan URL Cloudflare Tunnel.')
-
+        send_telegram('❌ Gagal dapat URL. Cek log.')
     try:
         while True:
             time.sleep(15)
             if cf_proc.poll() is not None:
-                log_telegram('\u26a0\ufe0f Tunnel mati, restart...')
+                log_telegram('⚠️ Tunnel mati, restart...')
                 cf_proc, tunnel_url = run_tunnel(port)
                 if tunnel_url:
-                    send_telegram(f'\u2705 Tunnel restart: {tunnel_url}')
+                    send_telegram(f'✅ Restart: {tunnel_url}')
     except KeyboardInterrupt:
-        log_telegram('\U0001f6d1 Shutdown...')
-        cf_proc.terminate()
+        log_telegram('🛑 Shutdown...')
+        if CF_PID:
+            try: os.kill(CF_PID, 9)
+            except: pass
         server.shutdown()
 
 if __name__ == '__main__':
