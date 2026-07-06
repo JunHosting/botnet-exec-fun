@@ -7,6 +7,7 @@ import json
 import base64
 import socket
 import threading
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==================== KONFIGURASI ====================
@@ -44,11 +45,9 @@ def find_free_port(start_port):
 def kill_process(name):
     try:
         subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        log_telegram(f"Kill {name} via pkill")
     except FileNotFoundError:
         try:
             subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            log_telegram(f"Kill {name} via killall")
         except FileNotFoundError:
             try:
                 output = subprocess.check_output(["ps", "aux"], text=True)
@@ -56,9 +55,8 @@ def kill_process(name):
                     if name in line and "grep" not in line:
                         pid = line.split()[1]
                         subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-                        log_telegram(f"Kill {name} PID {pid} via ps")
-            except Exception as e:
-                log_telegram(f"Gagal kill {name}: {e}")
+            except:
+                pass
 
 # ==================== HTML TERMINAL ====================
 HTML_TERMINAL = '''<!DOCTYPE html>
@@ -274,22 +272,6 @@ class SecureExecHandler(BaseHTTPRequestHandler):
         pass
 
 # ==================== CLOUDFLARED TUNNEL ====================
-def get_cloudflared_url():
-    for i in range(30):
-        time.sleep(1)
-        try:
-            resp = requests.get("http://localhost:4040/api/tunnels", timeout=2)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get('tunnels'):
-                    url = data['tunnels'][0].get('public_url')
-                    if url:
-                        log_telegram(f"URL ditemukan: {url}")
-                        return url
-        except Exception as e:
-            log_telegram(f"Gagal ambil URL ({i+1}/30): {str(e)[:100]}")
-    return None
-
 def run_tunnel(port):
     kill_process("cloudflared")
     log_telegram(f"Menjalankan tunnel ke port {port}")
@@ -297,17 +279,31 @@ def run_tunnel(port):
     
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     
+    url = None
+    url_pattern = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
+    
     def read_output(pipe, prefix):
+        nonlocal url
         for line in iter(pipe.readline, ''):
             if line:
                 send_telegram(f"[{prefix}] {line.strip()}")
+                # Cari URL dari log
+                if not url:
+                    match = url_pattern.search(line)
+                    if match:
+                        url = match.group(0)
+                        log_telegram(f"✅ URL ditemukan dari log: {url}")
         pipe.close()
 
     threading.Thread(target=read_output, args=(proc.stdout, "STDOUT"), daemon=True).start()
     threading.Thread(target=read_output, args=(proc.stderr, "STDERR"), daemon=True).start()
 
-    time.sleep(3)
-    url = get_cloudflared_url()
+    # Tunggu sampe URL ketemu (maks 30 detik)
+    for _ in range(30):
+        if url:
+            break
+        time.sleep(1)
+    
     return proc, url
 
 # ==================== MAIN ====================
@@ -327,12 +323,12 @@ def main():
     else:
         log_telegram("cloudflared sudah ada.")
 
-    # START WEB SERVER DULU (DI THREAD)
+    # START WEB SERVER DULU
     log_telegram(f"Menjalankan web server di port {port}")
     server = HTTPServer(('0.0.0.0', port), SecureExecHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
-    time.sleep(2)  # Kasih waktu web server start
+    time.sleep(2)
 
     # BARU START TUNNEL
     cf_proc, tunnel_url = run_tunnel(port)
@@ -354,7 +350,9 @@ def main():
             time.sleep(10)
             if cf_proc.poll() is not None:
                 log_telegram("⚠️ Tunnel mati, restart...")
-                cf_proc = run_tunnel(port)
+                cf_proc, tunnel_url = run_tunnel(port)
+                if tunnel_url:
+                    send_telegram(f"✅ Tunnel restart: {tunnel_url}")
     except KeyboardInterrupt:
         pass
     finally:
