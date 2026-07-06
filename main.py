@@ -196,7 +196,7 @@ class SecureExecHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml')
             self.end_headers()
-            self.wfile.write(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⬛</text></svg>')
+            self.wfile.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⬛</text></svg>'.encode())
         else:
             self.send_response(404)
             self.end_headers()
