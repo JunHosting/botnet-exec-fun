@@ -65,154 +65,58 @@ HTML_TERMINAL = '''<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WebTerm</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬛</text></svg>">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.min.css" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            background: #0a0a0a; 
-            color: #00ff00; 
-            font-family: 'Courier New', monospace; 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            padding: 8px; 
-            overflow: hidden;
-            touch-action: manipulation;
-        }
-        #header { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            padding: 6px 10px; 
-            background: #111; 
-            border-bottom: 1px solid #00ff00; 
-            border-radius: 5px 5px 0 0; 
-            flex-shrink: 0; 
-            font-size: 12px;
-        }
-        #header .title { color: #00ff00; font-weight: bold; }
-        #header .cwd { color: #888; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
-        #output { 
-            flex: 1; 
-            background: #0a0a0a; 
-            padding: 8px; 
-            overflow-y: auto; 
-            white-space: pre-wrap; 
-            word-break: break-all; 
-            font-size: 13px; 
-            border: 1px solid #222; 
-            border-top: none; 
-            border-radius: 0 0 5px 5px; 
-            -webkit-overflow-scrolling: touch;
-            min-height: 0;
-        }
-        #output .prompt { color: #00ff00; }
-        #output .error { color: #ff4444; }
-        #output .success { color: #44ff44; }
-        #input-line { 
-            display: flex; 
-            align-items: center; 
-            padding: 6px 10px; 
-            background: #111; 
-            border: 1px solid #00ff00; 
-            border-top: none; 
-            border-radius: 0 0 5px 5px; 
-            flex-shrink: 0; 
-            margin-top: -1px; 
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        #input-line .prompt { 
-            color: #00ff00; 
-            font-weight: bold; 
-            font-size: 14px; 
-            flex-shrink: 0;
-        }
-        #cmd-input { 
-            flex: 1; 
-            min-width: 60px;
-            background: transparent; 
-            color: #00ff00; 
-            border: none; 
-            outline: none; 
-            font-family: 'Courier New', monospace; 
-            font-size: 14px; 
-            padding: 6px 0; 
-            -webkit-appearance: none;
-        }
-        #cmd-input::placeholder { color: #444; }
-        #send-btn {
-            background: #00ff00;
-            color: #0a0a0a;
-            border: none;
-            border-radius: 4px;
-            padding: 4px 12px;
-            font-family: monospace;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-            touch-action: manipulation;
-            flex-shrink: 0;
-        }
-        #send-btn:active { background: #00cc00; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #111; }
-        ::-webkit-scrollbar-thumb { background: #00ff00; border-radius: 3px; }
-        .status-bar { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 3px 10px; 
-            background: #111; 
-            color: #666; 
-            font-size: 10px; 
-            border-top: 1px solid #222; 
-            flex-shrink: 0; 
-        }
-        .status-bar .online { color: #44ff44; }
-        @media (max-width: 480px) {
-            body { padding: 4px; }
-            #header { font-size: 11px; padding: 4px 8px; }
-            #output { font-size: 12px; padding: 6px; }
-            #input-line { padding: 4px 8px; gap: 4px; }
-            #cmd-input { font-size: 16px; padding: 8px 0; } /* lebih besar buat touch */
-            #send-btn { padding: 6px 14px; font-size: 16px; }
-            .status-bar { font-size: 9px; padding: 2px 8px; }
-        }
+        body { margin: 0; padding: 10px; background: #0a0a0a; height: 100vh; overflow: hidden; }
+        #terminal { height: 100%; width: 100%; border-radius: 8px; overflow: hidden; }
+        .xterm { height: 100%; }
+        .xterm-screen { padding: 8px; }
     </style>
 </head>
 <body>
-    <div id="header">
-        <span class="title">⬛ WebTerm</span>
-        <span class="cwd" id="cwd">/root/botme</span>
-    </div>
-    <div id="output"></div>
-    <div id="input-line">
-        <span class="prompt">$</span>
-        <input id="cmd-input" type="text" placeholder="command..." autofocus inputmode="text" enterkeyhint="send">
-        <button id="send-btn">⏎</button>
-    </div>
-    <div class="status-bar">
-        <span>🔗 <span class="online">● Online</span></span>
-        <span id="timestamp"></span>
-    </div>
+    <div id="terminal"></div>
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.min.js"></script>
     <script>
         (function() {
-            const output = document.getElementById('output');
-            const input = document.getElementById('cmd-input');
-            const sendBtn = document.getElementById('send-btn');
-            const cwdSpan = document.getElementById('cwd');
-            const timestampSpan = document.getElementById('timestamp');
-            let cwd = '/root/botme';
-            let history = [];
-            let historyIndex = -1;
+            const term = new Terminal({
+                cursorBlink: true,
+                fontSize: 14,
+                fontFamily: 'Courier New, monospace',
+                theme: {
+                    background: '#0a0a0a',
+                    foreground: '#00ff00',
+                    cursor: '#00ff00',
+                    black: '#000000',
+                    red: '#ff4444',
+                    green: '#44ff44',
+                    yellow: '#ffaa00',
+                    blue: '#4444ff',
+                    magenta: '#ff44ff',
+                    cyan: '#44ffff',
+                    white: '#ffffff'
+                },
+                scrollback: 1000,
+                convertEol: true
+            });
 
-            function appendOutput(text, type = '') {
-                const div = document.createElement('div');
-                div.textContent = text;
-                if (type) div.className = type;
-                output.appendChild(div);
-                output.scrollTop = output.scrollHeight;
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(document.getElementById('terminal'));
+            fitAddon.fit();
+
+            let cwd = '/root/botme';
+            let currentLine = '';
+            let prompt = '$ ';
+
+            function updatePrompt() {
+                term.write('\\r\\n' + prompt);
+                currentLine = '';
             }
+
+            term.write('\\x1b[1;32m⬛ WebTerm\\x1b[0m\\r\\n');
+            term.write('\\x1b[2;37mType commands below\\x1b[0m\\r\\n\\r\\n');
+            updatePrompt();
 
             async function execCmd(cmd) {
                 try {
@@ -223,86 +127,61 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                     });
                     const data = await resp.json();
                     if (data.output) {
-                        const lines = data.output.split('\n');
-                        lines.forEach(line => {
-                            if (line.startsWith('❌') || line.startsWith('Error')) {
-                                appendOutput(line, 'error');
-                            } else if (line.startsWith('✅')) {
-                                appendOutput(line, 'success');
-                            } else {
-                                appendOutput(line);
-                            }
-                        });
+                        term.write('\\r\\n' + data.output);
                     }
                     if (data.cwd) {
                         cwd = data.cwd;
-                        cwdSpan.textContent = cwd;
                     }
                 } catch (e) {
-                    appendOutput('❌ ' + e.message, 'error');
+                    term.write('\\r\\n\\x1b[1;31mError: ' + e.message + '\\x1b[0m');
                 }
-                output.scrollTop = output.scrollHeight;
+                updatePrompt();
             }
 
-            function handleCommand() {
-                const cmd = input.value.trim();
-                if (!cmd) return;
-                input.value = '';
-                appendOutput('$ ' + cmd, 'prompt');
-                history.push(cmd);
-                historyIndex = history.length;
-                if (cmd === 'clear') {
-                    output.innerHTML = '';
+            term.onKey((e) => {
+                const char = e.key;
+                const code = e.domEvent.keyCode;
+
+                if (code === 13) { // Enter
+                    const cmd = currentLine.trim();
+                    if (cmd) {
+                        term.write('\\r\\n');
+                        if (cmd === 'clear') {
+                            term.clear();
+                            term.write('\\x1b[1;32m⬛ WebTerm\\x1b[0m\\r\\n');
+                            updatePrompt();
+                            return;
+                        }
+                        execCmd(cmd);
+                    } else {
+                        term.write('\\r\\n');
+                        updatePrompt();
+                    }
                     return;
                 }
-                execCmd(cmd);
-            }
 
-            // Event: Enter key (fix untuk mobile)
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' || e.keyCode === 13) {
-                    e.preventDefault();
-                    handleCommand();
+                if (code === 8) { // Backspace
+                    if (currentLine.length > 0) {
+                        currentLine = currentLine.slice(0, -1);
+                        term.write('\\b \\b');
+                    }
+                    return;
+                }
+
+                if (char && char.length === 1 && char.charCodeAt(0) >= 32) {
+                    currentLine += char;
+                    term.write(char);
                 }
             });
-
-            // Event: tombol kirim
-            sendBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                handleCommand();
-            });
-
-            // Arrow history
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    if (historyIndex > 0) {
-                        historyIndex--;
-                        input.value = history[historyIndex];
-                    }
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    if (historyIndex < history.length - 1) {
-                        historyIndex++;
-                        input.value = history[historyIndex];
-                    } else {
-                        historyIndex = history.length;
-                        input.value = '';
-                    }
-                }
-            });
-
-            // Auto focus
-            document.addEventListener('click', function() { input.focus(); });
-            input.focus();
 
             // Auto run ls
-            setTimeout(function() { execCmd('ls -la'); }, 500);
+            setTimeout(() => {
+                term.write('\\r\\n');
+                execCmd('ls -la');
+            }, 500);
 
-            // Clock
-            setInterval(function() {
-                timestampSpan.textContent = new Date().toLocaleTimeString();
-            }, 1000);
+            // Resize
+            window.addEventListener('resize', () => fitAddon.fit());
         })();
     </script>
 </body>
