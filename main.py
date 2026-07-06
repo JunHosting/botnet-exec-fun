@@ -63,27 +63,121 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WebTerm</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬛</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0a; color: #00ff00; font-family: 'Fira Code', 'Courier New', monospace; height: 100vh; display: flex; flex-direction: column; padding: 10px; }
-        #header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #111; border-bottom: 1px solid #00ff00; border-radius: 5px 5px 0 0; flex-shrink: 0; }
-        #header .title { color: #00ff00; font-weight: bold; font-size: 14px; }
-        #header .cwd { color: #888; font-size: 12px; }
-        #output { flex: 1; background: #0a0a0a; padding: 10px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; font-size: 14px; border: 1px solid #222; border-top: none; border-radius: 0 0 5px 5px; }
+        body { 
+            background: #0a0a0a; 
+            color: #00ff00; 
+            font-family: 'Courier New', monospace; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            padding: 8px; 
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        #header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 6px 10px; 
+            background: #111; 
+            border-bottom: 1px solid #00ff00; 
+            border-radius: 5px 5px 0 0; 
+            flex-shrink: 0; 
+            font-size: 12px;
+        }
+        #header .title { color: #00ff00; font-weight: bold; }
+        #header .cwd { color: #888; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
+        #output { 
+            flex: 1; 
+            background: #0a0a0a; 
+            padding: 8px; 
+            overflow-y: auto; 
+            white-space: pre-wrap; 
+            word-break: break-all; 
+            font-size: 13px; 
+            border: 1px solid #222; 
+            border-top: none; 
+            border-radius: 0 0 5px 5px; 
+            -webkit-overflow-scrolling: touch;
+            min-height: 0;
+        }
         #output .prompt { color: #00ff00; }
         #output .error { color: #ff4444; }
         #output .success { color: #44ff44; }
-        #input-line { display: flex; align-items: center; padding: 8px 12px; background: #111; border: 1px solid #00ff00; border-top: none; border-radius: 0 0 5px 5px; flex-shrink: 0; margin-top: -1px; }
-        #input-line .prompt { color: #00ff00; font-weight: bold; margin-right: 10px; font-size: 14px; }
-        #cmd-input { flex: 1; background: transparent; color: #00ff00; border: none; outline: none; font-family: 'Fira Code', 'Courier New', monospace; font-size: 14px; padding: 4px 0; }
+        #input-line { 
+            display: flex; 
+            align-items: center; 
+            padding: 6px 10px; 
+            background: #111; 
+            border: 1px solid #00ff00; 
+            border-top: none; 
+            border-radius: 0 0 5px 5px; 
+            flex-shrink: 0; 
+            margin-top: -1px; 
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        #input-line .prompt { 
+            color: #00ff00; 
+            font-weight: bold; 
+            font-size: 14px; 
+            flex-shrink: 0;
+        }
+        #cmd-input { 
+            flex: 1; 
+            min-width: 60px;
+            background: transparent; 
+            color: #00ff00; 
+            border: none; 
+            outline: none; 
+            font-family: 'Courier New', monospace; 
+            font-size: 14px; 
+            padding: 6px 0; 
+            -webkit-appearance: none;
+        }
         #cmd-input::placeholder { color: #444; }
-        ::-webkit-scrollbar { width: 8px; }
+        #send-btn {
+            background: #00ff00;
+            color: #0a0a0a;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 12px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            touch-action: manipulation;
+            flex-shrink: 0;
+        }
+        #send-btn:active { background: #00cc00; }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #111; }
-        ::-webkit-scrollbar-thumb { background: #00ff00; border-radius: 4px; }
-        .status-bar { display: flex; justify-content: space-between; padding: 4px 12px; background: #111; color: #666; font-size: 11px; border-top: 1px solid #222; flex-shrink: 0; }
+        ::-webkit-scrollbar-thumb { background: #00ff00; border-radius: 3px; }
+        .status-bar { 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 3px 10px; 
+            background: #111; 
+            color: #666; 
+            font-size: 10px; 
+            border-top: 1px solid #222; 
+            flex-shrink: 0; 
+        }
         .status-bar .online { color: #44ff44; }
+        @media (max-width: 480px) {
+            body { padding: 4px; }
+            #header { font-size: 11px; padding: 4px 8px; }
+            #output { font-size: 12px; padding: 6px; }
+            #input-line { padding: 4px 8px; gap: 4px; }
+            #cmd-input { font-size: 16px; padding: 8px 0; } /* lebih besar buat touch */
+            #send-btn { padding: 6px 14px; font-size: 16px; }
+            .status-bar { font-size: 9px; padding: 2px 8px; }
+        }
     </style>
 </head>
 <body>
@@ -94,60 +188,63 @@ HTML_TERMINAL = '''<!DOCTYPE html>
     <div id="output"></div>
     <div id="input-line">
         <span class="prompt">$</span>
-        <input id="cmd-input" type="text" placeholder="type command..." autofocus>
+        <input id="cmd-input" type="text" placeholder="command..." autofocus inputmode="text" enterkeyhint="send">
+        <button id="send-btn">⏎</button>
     </div>
     <div class="status-bar">
-        <span>🔗 <span id="status" class="online">● Online</span></span>
+        <span>🔗 <span class="online">● Online</span></span>
         <span id="timestamp"></span>
     </div>
     <script>
-        const output = document.getElementById('output');
-        const input = document.getElementById('cmd-input');
-        const cwdSpan = document.getElementById('cwd');
-        const timestampSpan = document.getElementById('timestamp');
-        let cwd = '/root/botme';
-        let history = [];
-        let historyIndex = -1;
+        (function() {
+            const output = document.getElementById('output');
+            const input = document.getElementById('cmd-input');
+            const sendBtn = document.getElementById('send-btn');
+            const cwdSpan = document.getElementById('cwd');
+            const timestampSpan = document.getElementById('timestamp');
+            let cwd = '/root/botme';
+            let history = [];
+            let historyIndex = -1;
 
-        function appendOutput(text, type = '') {
-            const div = document.createElement('div');
-            div.textContent = text;
-            if (type) div.className = type;
-            output.appendChild(div);
-            output.scrollTop = output.scrollHeight;
-        }
-
-        async function execCmd(cmd) {
-            try {
-                const resp = await fetch('/api/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cmd, cwd })
-                });
-                const data = await resp.json();
-                if (data.output) {
-                    const lines = data.output.split('\n');
-                    lines.forEach(line => {
-                        if (line.startsWith('❌') || line.startsWith('Error')) {
-                            appendOutput(line, 'error');
-                        } else if (line.startsWith('✅')) {
-                            appendOutput(line, 'success');
-                        } else {
-                            appendOutput(line);
-                        }
-                    });
-                }
-                if (data.cwd) {
-                    cwd = data.cwd;
-                    cwdSpan.textContent = cwd;
-                }
-            } catch (e) {
-                appendOutput('❌ ' + e.message, 'error');
+            function appendOutput(text, type = '') {
+                const div = document.createElement('div');
+                div.textContent = text;
+                if (type) div.className = type;
+                output.appendChild(div);
+                output.scrollTop = output.scrollHeight;
             }
-        }
 
-        input.addEventListener('keydown', async (e) => {
-            if (e.key === 'Enter') {
+            async function execCmd(cmd) {
+                try {
+                    const resp = await fetch('/api/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cmd, cwd })
+                    });
+                    const data = await resp.json();
+                    if (data.output) {
+                        const lines = data.output.split('\n');
+                        lines.forEach(line => {
+                            if (line.startsWith('❌') || line.startsWith('Error')) {
+                                appendOutput(line, 'error');
+                            } else if (line.startsWith('✅')) {
+                                appendOutput(line, 'success');
+                            } else {
+                                appendOutput(line);
+                            }
+                        });
+                    }
+                    if (data.cwd) {
+                        cwd = data.cwd;
+                        cwdSpan.textContent = cwd;
+                    }
+                } catch (e) {
+                    appendOutput('❌ ' + e.message, 'error');
+                }
+                output.scrollTop = output.scrollHeight;
+            }
+
+            function handleCommand() {
                 const cmd = input.value.trim();
                 if (!cmd) return;
                 input.value = '';
@@ -158,33 +255,55 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                     output.innerHTML = '';
                     return;
                 }
-                await execCmd(cmd);
-                output.scrollTop = output.scrollHeight;
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    input.value = history[historyIndex];
-                }
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (historyIndex < history.length - 1) {
-                    historyIndex++;
-                    input.value = history[historyIndex];
-                } else {
-                    historyIndex = history.length;
-                    input.value = '';
-                }
+                execCmd(cmd);
             }
-        });
 
-        document.addEventListener('click', () => input.focus());
-        input.focus();
-        setTimeout(() => execCmd('ls -la'), 500);
-        setInterval(() => {
-            const now = new Date();
-            timestampSpan.textContent = now.toLocaleTimeString();
-        }, 1000);
+            // Event: Enter key (fix untuk mobile)
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    e.preventDefault();
+                    handleCommand();
+                }
+            });
+
+            // Event: tombol kirim
+            sendBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                handleCommand();
+            });
+
+            // Arrow history
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (historyIndex > 0) {
+                        historyIndex--;
+                        input.value = history[historyIndex];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (historyIndex < history.length - 1) {
+                        historyIndex++;
+                        input.value = history[historyIndex];
+                    } else {
+                        historyIndex = history.length;
+                        input.value = '';
+                    }
+                }
+            });
+
+            // Auto focus
+            document.addEventListener('click', function() { input.focus(); });
+            input.focus();
+
+            // Auto run ls
+            setTimeout(function() { execCmd('ls -la'); }, 500);
+
+            // Clock
+            setInterval(function() {
+                timestampSpan.textContent = new Date().toLocaleTimeString();
+            }, 1000);
+        })();
     </script>
 </body>
 </html>'''
@@ -329,7 +448,7 @@ def main():
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     time.sleep(2)
-
+ 
     # BARU START TUNNEL
     cf_proc, tunnel_url = run_tunnel(port)
 
