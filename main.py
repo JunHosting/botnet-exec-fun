@@ -13,7 +13,6 @@ import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-# ==================== KONFIGURASI ====================
 BOT_TOKEN = "8570951657:AAEXSCkLBeuYQfs8VtT5nwU-VanqmffUbbI"
 CHAT_ID = "8268185735"
 PORT = 8081
@@ -21,7 +20,6 @@ CLOUDFLARED_PATH = "/root/botme/cloudflared"
 AUTH_USER = "admin"
 AUTH_PASS = "root"
 
-# ==================== TELEGRAM ====================
 def send_telegram(text):
     try:
         requests.post(
@@ -35,9 +33,7 @@ def send_telegram(text):
 def log_telegram(text):
     send_telegram(f"[LOG] {text}")
 
-# ==================== UTILITY ====================
 def kill_process(name):
-    """Kill process by name using multiple fallbacks."""
     try:
         subprocess.run(["pkill", "-f", name],
                        stderr=subprocess.DEVNULL,
@@ -45,7 +41,6 @@ def kill_process(name):
         return
     except FileNotFoundError:
         pass
-
     try:
         subprocess.run(["killall", name],
                        stderr=subprocess.DEVNULL,
@@ -53,7 +48,6 @@ def kill_process(name):
         return
     except FileNotFoundError:
         pass
-
     try:
         output = subprocess.check_output(["ps", "aux"], text=True)
         for line in output.splitlines():
@@ -73,7 +67,6 @@ def find_free_port(start):
                 return port
         port += 1
 
-# ==================== HTML TERMINAL (SSE + REALTIME) ====================
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
@@ -248,10 +241,8 @@ HTML_TERMINAL = '''<!DOCTYPE html>
             sendBtn.addEventListener('click', handleCommand);
             input.focus();
 
-            // Auto run 'ls'
             setTimeout(() => execCmd('ls -la'), 600);
 
-            // Clock
             setInterval(() => {
                 const now = new Date();
                 tsSpan.textContent = now.toLocaleTimeString();
@@ -261,7 +252,6 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 </body>
 </html>'''
 
-# ==================== HTTP HANDLER ====================
 class TermHandler(BaseHTTPRequestHandler):
     def check_auth(self):
         auth = self.headers.get('Authorization')
@@ -285,7 +275,7 @@ class TermHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'image/svg+xml')
             self.end_headers()
-            self.wfile.write(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⬛</text></svg>')
+            self.wfile.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">■</text></svg>'.encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -308,12 +298,9 @@ class TermHandler(BaseHTTPRequestHandler):
                 if not cmd:
                     raise ValueError('Empty command')
 
-                # Change directory
                 if os.path.exists(cwd):
                     os.chdir(cwd)
 
-                # Run command with real-time streaming?
-                # For simplicity, we still use run() but we can later upgrade to Popen + chunks
                 proc = subprocess.run(
                     cmd,
                     shell=True,
@@ -322,7 +309,7 @@ class TermHandler(BaseHTTPRequestHandler):
                     text=True,
                     timeout=60
                 )
-                output = proc.stdout or proc.stderr or '✅ Selesai'
+                output = proc.stdout or proc.stderr or '\u2705 Selesai'
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
@@ -347,7 +334,6 @@ class TermHandler(BaseHTTPRequestHandler):
     def log_message(self, *args, **kwargs):
         pass
 
-# ==================== CLOUDFLARED TUNNEL ====================
 def run_tunnel(port):
     kill_process('cloudflared')
     cmd = [CLOUDFLARED_PATH, 'tunnel', '--url', f'http://localhost:{port}']
@@ -368,8 +354,6 @@ def run_tunnel(port):
                 match = pattern.search(line)
                 if match:
                     url = match.group(0)
-            # Optional: send log to Telegram
-            # log_telegram(line.strip())
         pipe.close()
 
     threading.Thread(target=reader, args=(proc.stdout,), daemon=True).start()
@@ -382,14 +366,11 @@ def run_tunnel(port):
 
     return proc, url
 
-# ==================== MAIN ====================
 def main():
-    send_telegram('🔄 Memulai Web Terminal...')
+    send_telegram('\U0001f504 Memulai Web Terminal...')
 
-    # Find free port
     port = find_free_port(PORT)
 
-    # Download cloudflared if missing
     if not os.path.exists(CLOUDFLARED_PATH):
         log_telegram('Mengunduh cloudflared...')
         os.makedirs(os.path.dirname(CLOUDFLARED_PATH), exist_ok=True)
@@ -403,38 +384,35 @@ def main():
     else:
         log_telegram('cloudflared sudah ada.')
 
-    # Start HTTP server
     server = HTTPServer(('0.0.0.0', port), TermHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     log_telegram(f'Web server berjalan di port {port}')
 
-    # Start Cloudflare tunnel
     time.sleep(2)
     cf_proc, tunnel_url = run_tunnel(port)
 
     if tunnel_url:
         send_telegram(
-            f'✅ Web Terminal siap!\n'
-            f'🔗 {tunnel_url}\n\n'
-            f'🔐 Auth: admin / root\n'
-            f'📡 Endpoint: /api/exec\n'
-            f'💡 Command: ls, cd, npm, python, dll.'
+            f'\u2705 Web Terminal siap!\n'
+            f'\U0001f517 {tunnel_url}\n\n'
+            f'\U0001f510 Auth: admin / root\n'
+            f'\U0001f4e1 Endpoint: /api/exec\n'
+            f'\U0001f4a1 Command: ls, cd, npm, python, dll.'
         )
     else:
-        send_telegram('❌ Gagal mendapatkan URL Cloudflare Tunnel.')
+        send_telegram('\u274c Gagal mendapatkan URL Cloudflare Tunnel.')
 
-    # Keep alive – restart tunnel if dies
     try:
         while True:
             time.sleep(15)
             if cf_proc.poll() is not None:
-                log_telegram('⚠️ Tunnel mati, restart...')
+                log_telegram('\u26a0\ufe0f Tunnel mati, restart...')
                 cf_proc, tunnel_url = run_tunnel(port)
                 if tunnel_url:
-                    send_telegram(f'✅ Tunnel restart: {tunnel_url}')
+                    send_telegram(f'\u2705 Tunnel restart: {tunnel_url}')
     except KeyboardInterrupt:
-        log_telegram('🛑 Shutdown...')
+        log_telegram('\U0001f6d1 Shutdown...')
         cf_proc.terminate()
         server.shutdown()
 
