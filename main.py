@@ -5,15 +5,12 @@ import time
 import requests
 import json
 import base64
-import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 
 BOT_TOKEN = "8436257967:AAEsPJl35Ksw770gcLPd2tFq0SaEwcGj3Kc"
 CHAT_ID = "8268185735"
 PORT = 8081
 CLOUDFLARED_PATH = "/root/botme/cloudflared"
-
 AUTH_USER = "admin"
 AUTH_PASS = "root"
 
@@ -27,13 +24,19 @@ def send_telegram(text):
 def kill_process(name):
     try:
         subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except:
+    except FileNotFoundError:
         try:
             subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        except:
-            pass
+        except FileNotFoundError:
+            try:
+                output = subprocess.check_output(["ps", "aux"], text=True)
+                for line in output.splitlines():
+                    if name in line and "grep" not in line:
+                        pid = line.split()[1]
+                        subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            except:
+                pass
 
-# ==================== HTML TERMINAL ====================
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
@@ -75,12 +78,10 @@ HTML_TERMINAL = '''<!DOCTYPE html>
         <span>🔗 <span id="status" class="online">● Online</span></span>
         <span id="timestamp"></span>
     </div>
-
     <script>
         const output = document.getElementById('output');
         const input = document.getElementById('cmd-input');
         const cwdSpan = document.getElementById('cwd');
-        const statusSpan = document.getElementById('status');
         const timestampSpan = document.getElementById('timestamp');
         let cwd = '/root/botme';
         let history = [];
@@ -157,11 +158,7 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 
         document.addEventListener('click', () => input.focus());
         input.focus();
-
-        // Auto run 'ls' on load
         setTimeout(() => execCmd('ls -la'), 500);
-
-        // Update timestamp
         setInterval(() => {
             const now = new Date();
             timestampSpan.textContent = now.toLocaleTimeString();
@@ -170,13 +167,10 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 </body>
 </html>'''
 
-# ==================== HTTP HANDLER ====================
 class SecureExecHandler(BaseHTTPRequestHandler):
     def check_auth(self):
         auth_header = self.headers.get('Authorization')
-        if not auth_header:
-            return False
-        if not auth_header.startswith('Basic '):
+        if not auth_header or not auth_header.startswith('Basic '):
             return False
         try:
             encoded = auth_header.split(' ')[1]
@@ -254,41 +248,38 @@ class SecureExecHandler(BaseHTTPRequestHandler):
     def log_message(self, *args, **kwargs):
         pass
 
-# ==================== TUNNEL ====================
-def run_tunnel():
-    kill_process("cloudflared")
-    cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{PORT}"]
-    log = open("/tmp/cloudflared.log", "w")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=log)
-
-    url = None
+def get_cloudflared_url():
     for _ in range(30):
         time.sleep(1)
         try:
             resp = requests.get("http://localhost:4040/api/tunnels", timeout=2)
             if resp.status_code == 200:
-                tunnels = resp.json().get('tunnels', [])
-                if tunnels:
-                    url = tunnels[0].get('public_url')
+                data = resp.json()
+                if data.get('tunnels'):
+                    url = data['tunnels'][0].get('public_url')
                     if url:
-                        break
+                        return url
         except:
             pass
+    return None
+
+def run_tunnel():
+    kill_process("cloudflared")
+    cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{PORT}"]
+    log = open("/tmp/cloudflared.log", "w")
+    proc = subprocess.Popen(cmd, stdout=log, stderr=log)
+    url = get_cloudflared_url()
     return proc, url
 
-# ==================== MAIN ====================
 def main():
-    # Download cloudflared
     if not os.path.exists(CLOUDFLARED_PATH):
         os.makedirs(os.path.dirname(CLOUDFLARED_PATH), exist_ok=True)
         subprocess.run(["curl", "-L", "-o", CLOUDFLARED_PATH,
                        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"], check=True)
         os.chmod(CLOUDFLARED_PATH, 0o755)
 
-    # Start tunnel
     cf_proc, tunnel_url = run_tunnel()
 
-    # Send URL to Telegram
     if tunnel_url:
         send_telegram(
             f"✅ Web Terminal siap!\n"
@@ -300,7 +291,6 @@ def main():
     else:
         send_telegram("❌ Gagal mendapatkan URL Cloudflare Tunnel.")
 
-    # Start web server
     server = HTTPServer(('0.0.0.0', PORT), SecureExecHandler)
     try:
         server.serve_forever()
