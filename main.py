@@ -275,7 +275,6 @@ class SecureExecHandler(BaseHTTPRequestHandler):
 
 # ==================== CLOUDFLARED TUNNEL ====================
 def get_cloudflared_url():
-    log_telegram("Mengambil URL dari API Cloudflared...")
     for i in range(30):
         time.sleep(1)
         try:
@@ -288,8 +287,7 @@ def get_cloudflared_url():
                         log_telegram(f"URL ditemukan: {url}")
                         return url
         except Exception as e:
-            log_telegram(f"Gagal ambil URL (percobaan {i+1}): {e}")
-    log_telegram("Gagal mendapatkan URL setelah 30 detik.")
+            log_telegram(f"Gagal ambil URL ({i+1}/30): {str(e)[:100]}")
     return None
 
 def run_tunnel(port):
@@ -297,24 +295,18 @@ def run_tunnel(port):
     log_telegram(f"Menjalankan tunnel ke port {port}")
     cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{port}"]
     
-    # Jalankan proses
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     
-    # Fungsi untuk baca output dan kirim ke Telegram
     def read_output(pipe, prefix):
         for line in iter(pipe.readline, ''):
             if line:
                 send_telegram(f"[{prefix}] {line.strip()}")
         pipe.close()
 
-    # Bikin thread untuk baca stdout dan stderr secara real-time
     threading.Thread(target=read_output, args=(proc.stdout, "STDOUT"), daemon=True).start()
     threading.Thread(target=read_output, args=(proc.stderr, "STDERR"), daemon=True).start()
 
-    # Kasih waktu 3 detik buat tunnel mulai
     time.sleep(3)
-    
-    # Ambil URL dari API
     url = get_cloudflared_url()
     return proc, url
 
@@ -322,7 +314,6 @@ def run_tunnel(port):
 def main():
     send_telegram("🔄 Memulai Web Terminal...")
     
-    # Cari port kosong
     port = find_free_port(PORT)
     
     # Download cloudflared
@@ -336,7 +327,14 @@ def main():
     else:
         log_telegram("cloudflared sudah ada.")
 
-    # Jalankan tunnel
+    # START WEB SERVER DULU (DI THREAD)
+    log_telegram(f"Menjalankan web server di port {port}")
+    server = HTTPServer(('0.0.0.0', port), SecureExecHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    time.sleep(2)  # Kasih waktu web server start
+
+    # BARU START TUNNEL
     cf_proc, tunnel_url = run_tunnel(port)
 
     if tunnel_url:
@@ -350,16 +348,18 @@ def main():
     else:
         send_telegram("❌ Gagal mendapatkan URL Cloudflare Tunnel.")
 
-    # Jalankan web server
-    log_telegram(f"Menjalankan web server di port {port}")
-    server = HTTPServer(('0.0.0.0', port), SecureExecHandler)
+    # JAGA PROSES TETEP JALAN
     try:
-        server.serve_forever()
+        while True:
+            time.sleep(10)
+            if cf_proc.poll() is not None:
+                log_telegram("⚠️ Tunnel mati, restart...")
+                cf_proc = run_tunnel(port)
     except KeyboardInterrupt:
         pass
     finally:
         cf_proc.terminate()
-        server.server_close()
+        server.shutdown()
 
 if __name__ == "__main__":
     main()
