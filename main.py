@@ -6,15 +6,18 @@ import requests
 import json
 import base64
 import socket
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-BOT_TOKEN = "8436257967:AAEsPJl35Ksw770gcLPd2tFq0SaEwcGj3Kc"
+# ==================== KONFIGURASI ====================
+BOT_TOKEN = "8570951657:AAEXSCkLBeuYQfs8VtT5nwU-VanqmffUbbI"
 CHAT_ID = "8268185735"
 PORT = 8081
 CLOUDFLARED_PATH = "/root/botme/cloudflared"
 AUTH_USER = "admin"
 AUTH_PASS = "root"
 
+# ==================== FUNGSI TELEGRAM ====================
 def send_telegram(text):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -25,6 +28,7 @@ def send_telegram(text):
 def log_telegram(text):
     send_telegram(f"[LOG] {text}")
 
+# ==================== FUNGSI UTILITY ====================
 def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('0.0.0.0', port)) == 0
@@ -56,6 +60,7 @@ def kill_process(name):
             except Exception as e:
                 log_telegram(f"Gagal kill {name}: {e}")
 
+# ==================== HTML TERMINAL ====================
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
@@ -186,6 +191,7 @@ HTML_TERMINAL = '''<!DOCTYPE html>
 </body>
 </html>'''
 
+# ==================== HTTP HANDLER ====================
 class SecureExecHandler(BaseHTTPRequestHandler):
     def check_auth(self):
         auth_header = self.headers.get('Authorization')
@@ -267,6 +273,7 @@ class SecureExecHandler(BaseHTTPRequestHandler):
     def log_message(self, *args, **kwargs):
         pass
 
+# ==================== CLOUDFLARED TUNNEL ====================
 def get_cloudflared_url():
     log_telegram("Mengambil URL dari API Cloudflared...")
     for i in range(30):
@@ -289,12 +296,29 @@ def run_tunnel(port):
     kill_process("cloudflared")
     log_telegram(f"Menjalankan tunnel ke port {port}")
     cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{port}"]
-    log_file = open("/tmp/cloudflared.log", "w")
-    proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+    
+    # Jalankan proses
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    
+    # Fungsi untuk baca output dan kirim ke Telegram
+    def read_output(pipe, prefix):
+        for line in iter(pipe.readline, ''):
+            if line:
+                send_telegram(f"[{prefix}] {line.strip()}")
+        pipe.close()
+
+    # Bikin thread untuk baca stdout dan stderr secara real-time
+    threading.Thread(target=read_output, args=(proc.stdout, "STDOUT"), daemon=True).start()
+    threading.Thread(target=read_output, args=(proc.stderr, "STDERR"), daemon=True).start()
+
+    # Kasih waktu 3 detik buat tunnel mulai
     time.sleep(3)
+    
+    # Ambil URL dari API
     url = get_cloudflared_url()
     return proc, url
 
+# ==================== MAIN ====================
 def main():
     send_telegram("🔄 Memulai Web Terminal...")
     
