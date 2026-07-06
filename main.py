@@ -39,197 +39,181 @@ def find_free_port(start):
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WebTerm</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0a0a0a;
-            color: #00ff00;
-            font-family: 'Courier New', monospace;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            padding: 8px;
-            overflow: hidden;
-        }
-        #header {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 12px;
-            background: #111;
-            border-bottom: 1px solid #00ff00;
-            border-radius: 5px 5px 0 0;
-            flex-shrink: 0;
-            font-size: 13px;
-        }
-        #header .cwd { color: #888; }
-        #output {
-            flex: 1;
-            background: #0a0a0a;
-            padding: 8px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            font-size: 14px;
-            border: 1px solid #00ff00;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-            margin-bottom: 6px;
-            -webkit-overflow-scrolling: touch;
-        }
-        #input-line {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        #cmd-input {
-            flex: 1;
-            background: #111;
-            color: #00ff00;
-            border: 1px solid #00ff00;
-            border-radius: 4px;
-            padding: 10px 12px;
-            font-family: monospace;
-            font-size: 16px;
-            outline: none;
-            -webkit-appearance: none;
-            inputmode: text;
-        }
-        #send-btn {
-            background: #00ff00;
-            color: #000;
-            border: none;
-            border-radius: 4px;
-            padding: 10px 20px;
-            font-weight: bold;
-            font-size: 16px;
-            cursor: pointer;
-            touch-action: manipulation;
-        }
-        #send-btn:active { background: #00cc00; }
-        .status {
-            color: #666;
-            font-size: 11px;
-            margin-top: 4px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-        .status .online { color: #44ff44; }
-        @media (max-width: 480px) {
-            body { padding: 4px; }
-            #cmd-input { font-size: 16px; padding: 12px; }
-            #send-btn { padding: 12px 18px; font-size: 18px; }
-            #output { font-size: 13px; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WebTerm</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#00ff00;font-family:'Courier New',monospace;height:100vh;display:flex;flex-direction:column;padding:8px;overflow:hidden}
+#header{display:flex;justify-content:space-between;padding:6px 12px;background:#111;border-bottom:1px solid #00ff00;border-radius:5px 5px 0 0;flex-shrink:0;font-size:13px}
+#header .cwd{color:#888}
+#output{flex:1;background:#0a0a0a;padding:8px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:14px;border:1px solid #00ff00;border-top:none;border-radius:0 0 5px 5px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+#input-line{display:flex;gap:8px;align-items:center;flex-shrink:0}
+#cmd-input{flex:1;background:#111;color:#00ff00;border:1px solid #00ff00;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:16px;outline:none;-webkit-appearance:none;inputmode:text}
+#send-btn{background:#00ff00;color:#000;border:none;border-radius:4px;padding:10px 20px;font-weight:bold;font-size:16px;cursor:pointer;touch-action:manipulation}
+#send-btn:active{background:#00cc00}
+.status{color:#666;font-size:11px;margin-top:4px;text-align:center;flex-shrink:0}
+.status .online{color:#44ff44}
+@media(max-width:480px){body{padding:4px}#cmd-input{font-size:16px;padding:12px}#send-btn{padding:12px 18px;font-size:18px}#output{font-size:13px}}
+</style>
 </head>
 <body>
-    <div id="header">
-        <span>⬛ WebTerm</span>
-        <span class="cwd" id="cwd">/root/botme</span>
-    </div>
-    <div id="output">⬛ WebTerm v3.0 · Ready\nType 'help' or 'ls'\n</div>
-    <div id="input-line">
-        <input id="cmd-input" type="text" placeholder="command..." autofocus inputmode="text">
-        <button id="send-btn">⏎</button>
-    </div>
-    <div class="status">● <span class="online">Online</span> &nbsp;|&nbsp; <span id="timestamp"></span></div>
+<div id="header"><span>⬛ WebTerm</span><span class="cwd" id="cwd">/root/botme</span></div>
+<div id="output">⬛ WebTerm v4.0 · Streaming ready\nType 'help' or 'ls'\n</div>
+<div id="input-line">
+<input id="cmd-input" type="text" placeholder="command..." autofocus inputmode="text">
+<button id="send-btn">⏎</button>
+</div>
+<div class="status">● <span class="online">Online</span> &nbsp;|&nbsp; <span id="timestamp"></span></div>
 
-    <script>
-        (function() {
-            const output = document.getElementById('output');
-            const input = document.getElementById('cmd-input');
-            const sendBtn = document.getElementById('send-btn');
-            const cwdSpan = document.getElementById('cwd');
-            const tsSpan = document.getElementById('timestamp');
-            let cwd = '/root/botme';
-            let history = [];
-            let histIdx = -1;
+<script>
+(function() {
+    const output = document.getElementById('output');
+    const input = document.getElementById('cmd-input');
+    const sendBtn = document.getElementById('send-btn');
+    const cwdSpan = document.getElementById('cwd');
+    const tsSpan = document.getElementById('timestamp');
+    let cwd = '/root/botme';
+    let history = [];
+    let histIdx = -1;
+    let currentStream = null;
+    let streamAbortController = null;
 
-            function append(text) {
-                output.textContent += text + '\n';
-                output.scrollTop = output.scrollHeight;
+    function append(text) {
+        output.textContent += text + '\n';
+        output.scrollTop = output.scrollHeight;
+    }
+
+    function appendRaw(text) {
+        output.textContent += text;
+        output.scrollTop = output.scrollHeight;
+    }
+
+    async function execCmdStream(cmd) {
+        // Abort previous stream if any
+        if (streamAbortController) {
+            streamAbortController.abort();
+            streamAbortController = null;
+        }
+        streamAbortController = new AbortController();
+        try {
+            const resp = await fetch('/api/exec/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cmd, cwd }),
+                signal: streamAbortController.signal
+            });
+            if (!resp.ok) {
+                const errText = await resp.text();
+                append('❌ Error: ' + errText);
+                return;
             }
-
-            async function execCmd(cmd) {
-                try {
-                    const resp = await fetch('/api/exec', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ cmd, cwd })
-                    });
-                    const data = await resp.json();
-                    if (data.output) append(data.output);
-                    if (data.cwd) {
-                        cwd = data.cwd;
-                        cwdSpan.textContent = cwd;
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                // Split by newline
+                let lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') {
+                            // end of stream
+                            return;
+                        }
+                        appendRaw(data);
                     }
-                } catch (e) {
-                    append('❌ ' + e.message);
                 }
             }
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                append('❌ ' + e.message);
+            }
+        } finally {
+            streamAbortController = null;
+        }
+    }
 
-            function handleCommand() {
-                const cmd = input.value.trim();
-                if (!cmd) return;
-                append('$ ' + cmd);
-                history.push(cmd);
+    async function execCmd(cmd) {
+        try {
+            const resp = await fetch('/api/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cmd, cwd })
+            });
+            const data = await resp.json();
+            if (data.output) append(data.output);
+            if (data.cwd) {
+                cwd = data.cwd;
+                cwdSpan.textContent = cwd;
+            }
+        } catch (e) {
+            append('❌ ' + e.message);
+        }
+    }
+
+    function handleCommand() {
+        const cmd = input.value.trim();
+        if (!cmd) return;
+        append('$ ' + cmd);
+        history.push(cmd);
+        histIdx = history.length;
+        input.value = '';
+        if (cmd === 'clear') {
+            output.textContent = '';
+            return;
+        }
+        // Use streaming for long commands (npm install, etc) or always?
+        // We'll always use streaming for better UX.
+        execCmdStream(cmd);
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleCommand();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (histIdx > 0) {
+                histIdx--;
+                input.value = history[histIdx];
+            }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (histIdx < history.length - 1) {
+                histIdx++;
+                input.value = history[histIdx];
+            } else {
                 histIdx = history.length;
                 input.value = '';
-                if (cmd === 'clear') {
-                    output.textContent = '';
-                    return;
-                }
-                execCmd(cmd);
             }
+        }
+    });
 
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleCommand();
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    if (histIdx > 0) {
-                        histIdx--;
-                        input.value = history[histIdx];
-                    }
-                } else if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    if (histIdx < history.length - 1) {
-                        histIdx++;
-                        input.value = history[histIdx];
-                    } else {
-                        histIdx = history.length;
-                        input.value = '';
-                    }
-                }
-            });
+    sendBtn.addEventListener('click', handleCommand);
 
-            sendBtn.addEventListener('click', handleCommand);
+    function focusInput() {
+        input.focus();
+        if (navigator.userAgent.match(/Android/i) || navigator.userAgent.match(/iPhone/i)) {
+            input.click();
+        }
+    }
+    document.addEventListener('click', focusInput);
+    setTimeout(focusInput, 300);
 
-            // Force focus on mobile
-            function focusInput() {
-                input.focus();
-                // if mobile, try to show keyboard
-                if (navigator.userAgent.match(/Android/i) || navigator.userAgent.match(/iPhone/i)) {
-                    input.click();
-                }
-            }
-            document.addEventListener('click', focusInput);
-            setTimeout(focusInput, 300);
+    // Auto run ls with streaming
+    setTimeout(() => { append('$ ls -la'); execCmdStream('ls -la'); }, 600);
 
-            // Auto run ls
-            setTimeout(() => execCmd('ls -la'), 600);
-
-            setInterval(() => {
-                const now = new Date();
-                tsSpan.textContent = now.toLocaleTimeString();
-            }, 1000);
-        })();
-    </script>
+    setInterval(() => {
+        const now = new Date();
+        tsSpan.textContent = now.toLocaleTimeString();
+    }, 1000);
+})();
+</script>
 </body>
 </html>'''
 
@@ -268,41 +252,92 @@ class TermHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"error":"Unauthorized"}')
             return
-        if self.path == '/api/exec':
-            try:
-                length = int(self.headers.get('Content-Length', 0))
-                data = json.loads(self.rfile.read(length).decode())
-                cmd = data.get('cmd', '')
-                cwd = data.get('cwd', os.getcwd())
-                if not cmd:
-                    raise ValueError('Empty command')
-                if os.path.exists(cwd):
-                    os.chdir(cwd)
-                proc = subprocess.run(cmd, shell=True, cwd=os.getcwd(),
-                                     capture_output=True, text=True, timeout=60)
-                output = proc.stdout or proc.stderr or '✅ Selesai'
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'output': output, 'cwd': os.getcwd()}).encode())
-            except subprocess.TimeoutExpired:
-                self.send_response(408)
-                self.end_headers()
-                self.wfile.write(b'{"error":"Timeout"}')
-            except Exception as e:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
+
+        if self.path == '/api/exec/stream':
+            self.handle_stream_exec()
+        elif self.path == '/api/exec':
+            self.handle_exec()
         else:
             self.send_response(404)
             self.end_headers()
+
+    def handle_exec(self):
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(length).decode())
+            cmd = data.get('cmd', '')
+            cwd = data.get('cwd', os.getcwd())
+            if not cmd:
+                raise ValueError('Empty command')
+            if os.path.exists(cwd):
+                os.chdir(cwd)
+            proc = subprocess.run(cmd, shell=True, cwd=os.getcwd(),
+                                 capture_output=True, text=True, timeout=60)
+            output = proc.stdout or proc.stderr or '✅ Selesai'
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'output': output, 'cwd': os.getcwd()}).encode())
+        except subprocess.TimeoutExpired:
+            self.send_response(408)
+            self.end_headers()
+            self.wfile.write(b'{"error":"Timeout"}')
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
+
+    def handle_stream_exec(self):
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(length).decode())
+            cmd = data.get('cmd', '')
+            cwd = data.get('cwd', os.getcwd())
+            if not cmd:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'{"error":"Empty command"}')
+                return
+            if os.path.exists(cwd):
+                os.chdir(cwd)
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+
+            proc = subprocess.Popen(cmd, shell=True, cwd=os.getcwd(),
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    text=True,
+                                    bufsize=1,
+                                    universal_newlines=True)
+            # Read line by line and send as SSE
+            for line in iter(proc.stdout.readline, ''):
+                if not line:
+                    break
+                # Escape for SSE (remove newline, send as data)
+                line = line.rstrip('\n')
+                self.wfile.write(f"data: {line}\n\n".encode())
+                self.wfile.flush()
+            proc.stdout.close()
+            proc.wait()
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+        except Exception as e:
+            # If headers not sent, send error, else just close
+            try:
+                self.wfile.write(f"data: ❌ Error: {str(e)}\n\n".encode())
+                self.wfile.flush()
+            except:
+                pass
 
     def log_message(self, *args, **kwargs):
         pass
 
 def run_tunnel(port):
     global CF_PID
-    # Kill only if we have a saved PID
     if CF_PID:
         try:
             os.kill(CF_PID, 9)
