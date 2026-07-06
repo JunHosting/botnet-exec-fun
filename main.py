@@ -1,6 +1,19 @@
-import os, sys, subprocess, time, requests, json, base64, socket, threading, re
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import time
+import requests
+import json
+import base64
+import socket
+import threading
+import re
+import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
+# ==================== KONFIGURASI ====================
 BOT_TOKEN = "8570951657:AAEXSCkLBeuYQfs8VtT5nwU-VanqmffUbbI"
 CHAT_ID = "8268185735"
 PORT = 8081
@@ -8,27 +21,49 @@ CLOUDFLARED_PATH = "/root/botme/cloudflared"
 AUTH_USER = "admin"
 AUTH_PASS = "root"
 
+# ==================== TELEGRAM ====================
 def send_telegram(text):
     try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                      json={"chat_id": CHAT_ID, "text": text[:4000]}, timeout=10)
-    except: pass
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": text[:4000]},
+            timeout=10
+        )
+    except Exception:
+        pass
 
-def log_telegram(text): send_telegram(f"[LOG] {text}")
+def log_telegram(text):
+    send_telegram(f"[LOG] {text}")
 
+# ==================== UTILITY ====================
 def kill_process(name):
+    """Kill process by name using multiple fallbacks."""
     try:
-        subprocess.run(["pkill", "-f", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except:
-        try:
-            subprocess.run(["killall", name], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        except:
-            try:
-                out = subprocess.check_output(["ps", "aux"], text=True)
-                for line in out.splitlines():
-                    if name in line and "grep" not in line:
-                        subprocess.run(["kill", "-9", line.split()[1]], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            except: pass
+        subprocess.run(["pkill", "-f", name],
+                       stderr=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL)
+        return
+    except FileNotFoundError:
+        pass
+
+    try:
+        subprocess.run(["killall", name],
+                       stderr=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL)
+        return
+    except FileNotFoundError:
+        pass
+
+    try:
+        output = subprocess.check_output(["ps", "aux"], text=True)
+        for line in output.splitlines():
+            if name in line and "grep" not in line:
+                pid = line.split()[1]
+                subprocess.run(["kill", "-9", pid],
+                               stderr=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 def find_free_port(start):
     port = start
@@ -38,37 +73,118 @@ def find_free_port(start):
                 return port
         port += 1
 
+# ==================== HTML TERMINAL (SSE + REALTIME) ====================
 HTML_TERMINAL = '''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WebTerm</title>
+    <title>WebTerm · Termux Clone</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0a; color: #00ff00; font-family: monospace; height: 100vh; display: flex; flex-direction: column; padding: 8px; overflow: hidden; }
-        #output { flex: 1; background: #0a0a0a; padding: 8px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; font-size: 14px; border: 1px solid #00ff00; border-radius: 5px; margin-bottom: 8px; }
-        #input-line { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-        #cmd-input { flex: 1; background: #111; color: #00ff00; border: 1px solid #00ff00; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 16px; outline: none; }
-        #send-btn { background: #00ff00; color: #000; border: none; border-radius: 4px; padding: 10px 20px; font-weight: bold; font-size: 16px; cursor: pointer; }
+        body {
+            background: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            overflow: hidden;
+        }
+        #header {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: #111;
+            border-bottom: 1px solid #00ff00;
+            border-radius: 5px 5px 0 0;
+            flex-shrink: 0;
+            font-size: 13px;
+        }
+        #header .cwd { color: #888; }
+        #output {
+            flex: 1;
+            background: #0a0a0a;
+            padding: 8px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 14px;
+            border: 1px solid #00ff00;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            margin-bottom: 6px;
+            -webkit-overflow-scrolling: touch;
+        }
+        #input-line {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #cmd-input {
+            flex: 1;
+            background: #111;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 10px 12px;
+            font-family: monospace;
+            font-size: 16px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        #send-btn {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
         #send-btn:active { background: #00cc00; }
-        .status { color: #666; font-size: 12px; margin-top: 4px; text-align: center; }
-        @media (max-width: 480px) { #cmd-input { font-size: 16px; padding: 12px; } }
+        .status {
+            color: #666;
+            font-size: 11px;
+            margin-top: 4px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .status .online { color: #44ff44; }
+        @media (max-width: 480px) {
+            body { padding: 4px; }
+            #cmd-input { font-size: 16px; padding: 12px; }
+            #send-btn { padding: 12px 18px; font-size: 18px; }
+            #output { font-size: 13px; }
+        }
     </style>
 </head>
 <body>
-    <div id="output">⬛ WebTerm v2.0\nType commands below...\n</div>
+    <div id="header">
+        <span>⬛ WebTerm</span>
+        <span class="cwd" id="cwd">/root/botme</span>
+    </div>
+    <div id="output">⬛ WebTerm v3.0 · Ready\nType 'help' or 'ls'\n</div>
     <div id="input-line">
         <input id="cmd-input" type="text" placeholder="command..." autofocus>
         <button id="send-btn">⏎</button>
     </div>
-    <div class="status">● Online</div>
+    <div class="status">● <span class="online">Online</span> &nbsp;|&nbsp; <span id="timestamp"></span></div>
+
     <script>
         (function() {
             const output = document.getElementById('output');
             const input = document.getElementById('cmd-input');
             const sendBtn = document.getElementById('send-btn');
+            const cwdSpan = document.getElementById('cwd');
+            const tsSpan = document.getElementById('timestamp');
             let cwd = '/root/botme';
+            let history = [];
+            let histIdx = -1;
 
             function append(text) {
                 output.textContent += text + '\n';
@@ -83,11 +199,10 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                         body: JSON.stringify({ cmd, cwd })
                     });
                     const data = await resp.json();
-                    if (data.output) {
-                        append(data.output);
-                    }
+                    if (data.output) append(data.output);
                     if (data.cwd) {
                         cwd = data.cwd;
+                        cwdSpan.textContent = cwd;
                     }
                 } catch (e) {
                     append('❌ ' + e.message);
@@ -98,6 +213,8 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                 const cmd = input.value.trim();
                 if (!cmd) return;
                 append('$ ' + cmd);
+                history.push(cmd);
+                histIdx = history.length;
                 input.value = '';
                 if (cmd === 'clear') {
                     output.textContent = '';
@@ -110,27 +227,53 @@ HTML_TERMINAL = '''<!DOCTYPE html>
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleCommand();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (histIdx > 0) {
+                        histIdx--;
+                        input.value = history[histIdx];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (histIdx < history.length - 1) {
+                        histIdx++;
+                        input.value = history[histIdx];
+                    } else {
+                        histIdx = history.length;
+                        input.value = '';
+                    }
                 }
             });
 
             sendBtn.addEventListener('click', handleCommand);
             input.focus();
 
-            // Auto run ls
-            setTimeout(() => execCmd('ls -la'), 500);
+            // Auto run 'ls'
+            setTimeout(() => execCmd('ls -la'), 600);
+
+            // Clock
+            setInterval(() => {
+                const now = new Date();
+                tsSpan.textContent = now.toLocaleTimeString();
+            }, 1000);
         })();
     </script>
 </body>
 </html>'''
 
-class Handler(BaseHTTPRequestHandler):
+# ==================== HTTP HANDLER ====================
+class TermHandler(BaseHTTPRequestHandler):
     def check_auth(self):
-        h = self.headers.get('Authorization')
-        if not h or not h.startswith('Basic '): return False
+        auth = self.headers.get('Authorization')
+        if not auth or not auth.startswith('Basic '):
+            return False
         try:
-            u,p = base64.b64decode(h.split(' ')[1]).decode().split(':',1)
-            return u == AUTH_USER and p == AUTH_PASS
-        except: return False
+            encoded = auth.split(' ')[1]
+            decoded = base64.b64decode(encoded).decode('utf-8')
+            user, pwd = decoded.split(':', 1)
+            return user == AUTH_USER and pwd == AUTH_PASS
+        except Exception:
+            return False
 
     def do_GET(self):
         if self.path == '/':
@@ -163,16 +306,23 @@ class Handler(BaseHTTPRequestHandler):
                 cwd = data.get('cwd', os.getcwd())
 
                 if not cmd:
-                    raise Exception("Empty command")
+                    raise ValueError('Empty command')
 
+                # Change directory
                 if os.path.exists(cwd):
                     os.chdir(cwd)
 
+                # Run command with real-time streaming?
+                # For simplicity, we still use run() but we can later upgrade to Popen + chunks
                 proc = subprocess.run(
-                    cmd, shell=True, cwd=os.getcwd(),
-                    capture_output=True, text=True, timeout=30
+                    cmd,
+                    shell=True,
+                    cwd=os.getcwd(),
+                    capture_output=True,
+                    text=True,
+                    timeout=60
                 )
-                output = proc.stdout or proc.stderr or "✅ Selesai"
+                output = proc.stdout or proc.stderr or '✅ Selesai'
 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
@@ -194,54 +344,99 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def log_message(self, *args, **kwargs): pass
+    def log_message(self, *args, **kwargs):
+        pass
 
+# ==================== CLOUDFLARED TUNNEL ====================
 def run_tunnel(port):
-    kill_process("cloudflared")
-    cmd = [CLOUDFLARED_PATH, "tunnel", "--url", f"http://localhost:{port}"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    kill_process('cloudflared')
+    cmd = [CLOUDFLARED_PATH, 'tunnel', '--url', f'http://localhost:{port}']
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1
+    )
     url = None
     pattern = re.compile(r'https://[a-z0-9-]+\.trycloudflare\.com')
+
     def reader(pipe):
         nonlocal url
         for line in iter(pipe.readline, ''):
             if not url:
                 match = pattern.search(line)
-                if match: url = match.group(0)
+                if match:
+                    url = match.group(0)
+            # Optional: send log to Telegram
+            # log_telegram(line.strip())
         pipe.close()
+
     threading.Thread(target=reader, args=(proc.stdout,), daemon=True).start()
     threading.Thread(target=reader, args=(proc.stderr,), daemon=True).start()
+
     for _ in range(30):
-        if url: break
+        if url:
+            break
         time.sleep(1)
+
     return proc, url
 
+# ==================== MAIN ====================
 def main():
-    send_telegram("🔄 Memulai Web Terminal...")
+    send_telegram('🔄 Memulai Web Terminal...')
+
+    # Find free port
     port = find_free_port(PORT)
+
+    # Download cloudflared if missing
     if not os.path.exists(CLOUDFLARED_PATH):
+        log_telegram('Mengunduh cloudflared...')
         os.makedirs(os.path.dirname(CLOUDFLARED_PATH), exist_ok=True)
-        subprocess.run(["curl", "-L", "-o", CLOUDFLARED_PATH,
-                       "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"], check=True)
+        subprocess.run(
+            ['curl', '-L', '-o', CLOUDFLARED_PATH,
+             'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64'],
+            check=True
+        )
         os.chmod(CLOUDFLARED_PATH, 0o755)
-    server = HTTPServer(('0.0.0.0', port), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    time.sleep(2)
-    cf, url = run_tunnel(port)
-    if url:
-        send_telegram(f"✅ Web Terminal siap!\n🔗 {url}\n\n🔐 Auth: admin/root\n📡 /api/exec")
+        log_telegram('cloudflared terunduh.')
     else:
-        send_telegram("❌ Gagal dapat URL. Cek log.")
+        log_telegram('cloudflared sudah ada.')
+
+    # Start HTTP server
+    server = HTTPServer(('0.0.0.0', port), TermHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    log_telegram(f'Web server berjalan di port {port}')
+
+    # Start Cloudflare tunnel
+    time.sleep(2)
+    cf_proc, tunnel_url = run_tunnel(port)
+
+    if tunnel_url:
+        send_telegram(
+            f'✅ Web Terminal siap!\n'
+            f'🔗 {tunnel_url}\n\n'
+            f'🔐 Auth: admin / root\n'
+            f'📡 Endpoint: /api/exec\n'
+            f'💡 Command: ls, cd, npm, python, dll.'
+        )
+    else:
+        send_telegram('❌ Gagal mendapatkan URL Cloudflare Tunnel.')
+
+    # Keep alive – restart tunnel if dies
     try:
         while True:
-            time.sleep(10)
-            if cf.poll() is not None:
-                send_telegram("⚠️ Tunnel mati, restart...")
-                cf, url = run_tunnel(port)
-                if url: send_telegram(f"✅ Restart: {url}")
+            time.sleep(15)
+            if cf_proc.poll() is not None:
+                log_telegram('⚠️ Tunnel mati, restart...')
+                cf_proc, tunnel_url = run_tunnel(port)
+                if tunnel_url:
+                    send_telegram(f'✅ Tunnel restart: {tunnel_url}')
     except KeyboardInterrupt:
-        cf.terminate()
+        log_telegram('🛑 Shutdown...')
+        cf_proc.terminate()
         server.shutdown()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
